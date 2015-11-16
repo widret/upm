@@ -1,4 +1,4 @@
-%module(directors="1") javaupm_lsm9ds0
+%module(directors="1") javaupm_lps25h
 %include "../upm.i"
 %include "cpointer.i"
 %include "typemaps.i"
@@ -44,7 +44,7 @@
 %ignore getMagnetometer(float *, float *, float *);
 
 %{
-    #include "lsm9ds0.h"
+    #include "lps25h.h"
 %}
 
-%include "lsm9ds0.h"
+%include "lps25h.h"

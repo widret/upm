@@ -1,4 +1,4 @@
-%module pyupm_lsm9ds0
+%module pyupm_lps25h
 %include "../upm.i"
 %include "cpointer.i"
 
@@ -8,8 +8,8 @@
 
 %pointer_functions(float, floatp);
 
-%include "lsm9ds0.h"
+%include "lps25h.h"
 %{
-    #include "lsm9ds0.h"
+    #include "lps25h.h"
 %}
 

@@ -33,35 +33,35 @@
 #include "../IsrCallback.h"
 #endif
 
-#define LSM9DS0_I2C_BUS 1
-#define LSM9DS0_DEFAULT_XM_ADDR 0x1d
-#define LSM9DS0_DEFAULT_GYRO_ADDR 0x6b
+#define LPS25H_I2C_BUS 1
+#define LPS25H_DEFAULT_XM_ADDR 0x1d
+#define LPS25H_DEFAULT_GYRO_ADDR 0x6b
 
 namespace upm {
   
   /**
-   * @brief LSM9DS0 accelerometer library
-   * @defgroup lsm9ds0 libupm-lsm9ds0
+   * @brief LPS25H accelerometer library
+   * @defgroup lps25h libupm-lps25h
    * @ingroup i2c gpio accelerometer compass
    */
 
   /**
-   * @library lsm9ds0
-   * @sensor lsm9ds0
-   * @comname LSM9DS0 3-axis Gyroscope, Accelerometer, and Magnetometer
+   * @library lps25h
+   * @sensor lps25h
+   * @comname LPS25H 3-axis Gyroscope, Accelerometer, and Magnetometer
    * @type accelerometer compass
    * @man sparkfun
    * @con i2c gpio
    * @web https://www.sparkfun.com/products/13033
    *
-   * @brief API for the LSM9DS0 3-axis Gyroscope, Accelerometer, 
+   * @brief API for the LPS25H 3-axis Gyroscope, Accelerometer, 
    * and Magnetometer
    *
-   * The LSM9DS0 is a system-in-package featuring a 3D digital linear
+   * The LPS25H is a system-in-package featuring a 3D digital linear
    * acceleration sensor, a 3D digital angular rate sensor, and a 3D
    * digital magnetic sensor.
    *
-   * The LSM9DS0 has a linear acceleration full scale of
+   * The LPS25H has a linear acceleration full scale of
    * 2g/4g/6g/8g/16g, a magnetic field full scale of 2/4/8/12
    * gauss and an angular rate of 245/500/2000 dps.
    *
@@ -72,10 +72,10 @@ namespace upm {
    *
    * This driver was developed on a Sparkfun 9DOF edison block.
    *
-   * @snippet lsm9ds0.cxx Interesting
+   * @snippet lps25h.cxx Interesting
    */
 
-  class LSM9DS0 {
+  class LPS25H {
   public:
 
     // NOTE: reserved registers must not be written into or permanent
@@ -87,7 +87,7 @@ namespace upm {
     // with their own I2C address.
 
     /**
-     * LSM9DS0 Gyroscope (G) registers
+     * LPS25H Gyroscope (G) registers
      */
     typedef enum {
       // 0x00-0x0e reserved
@@ -445,7 +445,7 @@ namespace upm {
     // Magnetometer (M), and Temperature device.
 
     /**
-     * LSM9DS0 Accelerometer (X) and Magnetometer (M) registers
+     * LPS25H Accelerometer (X) and Magnetometer (M) registers
      */
     typedef enum {
       // 0x00-0x04 reserved
@@ -1054,19 +1054,19 @@ namespace upm {
 
 
     /**
-     * lsm9ds0 constructor
+     * lps25h constructor
      *
      * @param bus i2c bus to use
      * @param address the address for this device
      */
-    LSM9DS0(int bus=LSM9DS0_I2C_BUS, 
-            uint8_t gAddress=LSM9DS0_DEFAULT_GYRO_ADDR,
-            uint8_t xmAddress=LSM9DS0_DEFAULT_XM_ADDR);
+    LPS25H(int bus=LPS25H_I2C_BUS, 
+            uint8_t gAddress=LPS25H_DEFAULT_GYRO_ADDR,
+            uint8_t xmAddress=LPS25H_DEFAULT_XM_ADDR);
 
     /**
-     * LSM9DS0 Destructor
+     * LPS25H Destructor
      */
-    ~LSM9DS0();
+    ~LPS25H();
     
     /**
      * set up initial values and start operation

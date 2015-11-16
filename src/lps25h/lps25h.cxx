@@ -27,13 +27,13 @@
 #include <stdexcept>
 #include <string.h>
 
-#include "lsm9ds0.h"
+#include "lps25h.h"
 
 using namespace upm;
 using namespace std;
 
 
-LSM9DS0::LSM9DS0(int bus, uint8_t gAddress, uint8_t xmAddress) :
+LPS25H::LPS25H(int bus, uint8_t gAddress, uint8_t xmAddress) :
   m_i2cG(bus), m_i2cXM(bus), m_gpioG_INT(0), m_gpioG_DRDY(0),
   m_gpioXM_GEN1(0), m_gpioXM_GEN2(0)
 {
@@ -74,7 +74,7 @@ LSM9DS0::LSM9DS0(int bus, uint8_t gAddress, uint8_t xmAddress) :
     }
 }
 
-LSM9DS0::~LSM9DS0()
+LPS25H::~LPS25H()
 {
   uninstallISR(INTERRUPT_G_INT);
   uninstallISR(INTERRUPT_G_DRDY);
@@ -82,7 +82,7 @@ LSM9DS0::~LSM9DS0()
   uninstallISR(INTERRUPT_XM_GEN2);
 }
 
-bool LSM9DS0::init()
+bool LPS25H::init()
 {
   // Init the gyroscope
 
@@ -202,7 +202,7 @@ bool LSM9DS0::init()
 }
 
 
-void LSM9DS0::update()
+void LPS25H::update()
 {
   updateGyroscope();
   updateAccelerometer();
@@ -210,7 +210,7 @@ void LSM9DS0::update()
   updateTemperature();
 }
 
-void LSM9DS0::updateGyroscope()
+void LPS25H::updateGyroscope()
 {
   uint8_t buffer[6];
 
@@ -228,7 +228,7 @@ void LSM9DS0::updateGyroscope()
   m_gyroZ = float(z);
 }
 
-void LSM9DS0::updateAccelerometer()
+void LPS25H::updateAccelerometer()
 {
   uint8_t buffer[6];
 
@@ -246,7 +246,7 @@ void LSM9DS0::updateAccelerometer()
   m_accelZ = float(z);
 }
 
-void LSM9DS0::updateMagnetometer()
+void LPS25H::updateMagnetometer()
 {
   uint8_t buffer[6];
 
@@ -264,7 +264,7 @@ void LSM9DS0::updateMagnetometer()
   m_magZ = float(z);
 }
 
-void LSM9DS0::updateTemperature()
+void LPS25H::updateTemperature()
 {
   uint8_t buffer[2];
 
@@ -284,7 +284,7 @@ void LSM9DS0::updateTemperature()
   m_temp = float(temp);
 }
 
-uint8_t LSM9DS0::readReg(DEVICE_T dev, uint8_t reg)
+uint8_t LPS25H::readReg(DEVICE_T dev, uint8_t reg)
 {
   mraa::I2c *device;
 
@@ -301,7 +301,7 @@ uint8_t LSM9DS0::readReg(DEVICE_T dev, uint8_t reg)
   return device->readReg(reg);
 }
 
-void LSM9DS0::readRegs(DEVICE_T dev, uint8_t reg, uint8_t *buffer, int len)
+void LPS25H::readRegs(DEVICE_T dev, uint8_t reg, uint8_t *buffer, int len)
 {
   mraa::I2c *device;
 
@@ -320,7 +320,7 @@ void LSM9DS0::readRegs(DEVICE_T dev, uint8_t reg, uint8_t *buffer, int len)
   device->readBytesReg(reg | m_autoIncrementMode, buffer, len);
 }
 
-bool LSM9DS0::writeReg(DEVICE_T dev, uint8_t reg, uint8_t val)
+bool LPS25H::writeReg(DEVICE_T dev, uint8_t reg, uint8_t val)
 {
   mraa::I2c *device;
 
@@ -345,7 +345,7 @@ bool LSM9DS0::writeReg(DEVICE_T dev, uint8_t reg, uint8_t val)
   return true;
 }
 
-bool LSM9DS0::setGyroscopePowerDown(bool enable)
+bool LPS25H::setGyroscopePowerDown(bool enable)
 {
   uint8_t reg = readReg(DEV_GYRO, REG_CTRL_REG1_G);
 
@@ -357,7 +357,7 @@ bool LSM9DS0::setGyroscopePowerDown(bool enable)
   return writeReg(DEV_GYRO, REG_CTRL_REG1_G, reg);
 }
 
-bool LSM9DS0::setGyroscopeEnableAxes(uint8_t axes)
+bool LPS25H::setGyroscopeEnableAxes(uint8_t axes)
 {
   uint8_t reg = readReg(DEV_GYRO, REG_CTRL_REG1_G);
 
@@ -373,7 +373,7 @@ bool LSM9DS0::setGyroscopeEnableAxes(uint8_t axes)
   return writeReg(DEV_GYRO, REG_CTRL_REG1_G, reg);
 }
 
-bool LSM9DS0::setGyroscopeODR(G_ODR_T odr)
+bool LPS25H::setGyroscopeODR(G_ODR_T odr)
 {
   uint8_t reg = readReg(DEV_GYRO, REG_CTRL_REG1_G);
 
@@ -384,7 +384,7 @@ bool LSM9DS0::setGyroscopeODR(G_ODR_T odr)
   return writeReg(DEV_GYRO, REG_CTRL_REG1_G, reg);
 }
 
-bool LSM9DS0::setGyroscopeScale(G_FS_T scale)
+bool LPS25H::setGyroscopeScale(G_FS_T scale)
 {
   uint8_t reg = readReg(DEV_GYRO, REG_CTRL_REG4_G);
 
@@ -423,7 +423,7 @@ bool LSM9DS0::setGyroscopeScale(G_FS_T scale)
   return true;
 }
 
-bool LSM9DS0::setAccelerometerEnableAxes(uint8_t axes)
+bool LPS25H::setAccelerometerEnableAxes(uint8_t axes)
 {
   uint8_t reg = readReg(DEV_XM, REG_CTRL_REG1_XM);
 
@@ -439,7 +439,7 @@ bool LSM9DS0::setAccelerometerEnableAxes(uint8_t axes)
   return writeReg(DEV_XM, REG_CTRL_REG1_XM, reg);
 }
 
-bool LSM9DS0::setAccelerometerODR(XM_AODR_T odr)
+bool LPS25H::setAccelerometerODR(XM_AODR_T odr)
 {
   uint8_t reg = readReg(DEV_XM, REG_CTRL_REG1_XM);
 
@@ -450,7 +450,7 @@ bool LSM9DS0::setAccelerometerODR(XM_AODR_T odr)
   return writeReg(DEV_XM, REG_CTRL_REG1_XM, reg);
 }
 
-bool LSM9DS0::setAccelerometerScale(XM_AFS_T scale)
+bool LPS25H::setAccelerometerScale(XM_AFS_T scale)
 {
   uint8_t reg = readReg(DEV_XM, REG_CTRL_REG2_XM);
 
@@ -497,7 +497,7 @@ bool LSM9DS0::setAccelerometerScale(XM_AFS_T scale)
   return true;
 }
 
-bool LSM9DS0::setMagnetometerResolution(XM_RES_T res)
+bool LPS25H::setMagnetometerResolution(XM_RES_T res)
 {
   uint8_t reg = readReg(DEV_XM, REG_CTRL_REG5_XM);
 
@@ -508,7 +508,7 @@ bool LSM9DS0::setMagnetometerResolution(XM_RES_T res)
   return writeReg(DEV_XM, REG_CTRL_REG5_XM, reg);
 }
 
-bool LSM9DS0::setMagnetometerODR(XM_ODR_T odr)
+bool LPS25H::setMagnetometerODR(XM_ODR_T odr)
 {
   uint8_t reg = readReg(DEV_XM, REG_CTRL_REG5_XM);
 
@@ -519,7 +519,7 @@ bool LSM9DS0::setMagnetometerODR(XM_ODR_T odr)
   return writeReg(DEV_XM, REG_CTRL_REG5_XM, reg);
 }
 
-bool LSM9DS0::setMagnetometerMode(XM_MD_T mode)
+bool LPS25H::setMagnetometerMode(XM_MD_T mode)
 {
   uint8_t reg = readReg(DEV_XM, REG_CTRL_REG7_XM);
 
@@ -530,7 +530,7 @@ bool LSM9DS0::setMagnetometerMode(XM_MD_T mode)
   return writeReg(DEV_XM, REG_CTRL_REG7_XM, reg);
 }
 
-bool LSM9DS0::setMagnetometerLPM(bool enable)
+bool LPS25H::setMagnetometerLPM(bool enable)
 {
   uint8_t reg = readReg(DEV_XM, REG_CTRL_REG7_XM);
 
@@ -542,7 +542,7 @@ bool LSM9DS0::setMagnetometerLPM(bool enable)
   return writeReg(DEV_XM, REG_CTRL_REG7_XM, reg);
 }
 
-bool LSM9DS0::setMagnetometerScale(XM_MFS_T scale)
+bool LPS25H::setMagnetometerScale(XM_MFS_T scale)
 {
   uint8_t reg = readReg(DEV_XM, REG_CTRL_REG6_XM);
 
@@ -585,7 +585,7 @@ bool LSM9DS0::setMagnetometerScale(XM_MFS_T scale)
   return true;
 }
 
-void LSM9DS0::getAccelerometer(float *x, float *y, float *z)
+void LPS25H::getAccelerometer(float *x, float *y, float *z)
 {
   if (x)
     *x = (m_accelX * m_accelScale) / 1000.0;
@@ -597,7 +597,7 @@ void LSM9DS0::getAccelerometer(float *x, float *y, float *z)
     *z = (m_accelZ * m_accelScale) / 1000.0;
 }
 
-void LSM9DS0::getGyroscope(float *x, float *y, float *z)
+void LPS25H::getGyroscope(float *x, float *y, float *z)
 {
   if (x)
     *x = (m_gyroX * m_gyroScale) / 1000.0;
@@ -609,7 +609,7 @@ void LSM9DS0::getGyroscope(float *x, float *y, float *z)
     *z = (m_gyroZ * m_gyroScale) / 1000.0;
 }
 
-void LSM9DS0::getMagnetometer(float *x, float *y, float *z)
+void LPS25H::getMagnetometer(float *x, float *y, float *z)
 {
   if (x)
     *x = (m_magX * m_magScale) / 1000.0;
@@ -622,21 +622,21 @@ void LSM9DS0::getMagnetometer(float *x, float *y, float *z)
 }
 
 #ifdef JAVACALLBACK
-float *LSM9DS0::getAccelerometer()
+float *LPS25H::getAccelerometer()
 {
   float *v = new float[3];
   getAccelerometer(&v[0], &v[1], &v[2]);
   return v;
 }
 
-float *LSM9DS0::getGyroscope()
+float *LPS25H::getGyroscope()
 {
   float *v = new float[3];
   getGyroscope(&v[0], &v[1], &v[2]);
   return v;
 }
 
-float *LSM9DS0::getMagnetometer()
+float *LPS25H::getMagnetometer()
 {
   float *v = new float[3];
   getMagnetometer(&v[0], &v[1], &v[2]);
@@ -644,7 +644,7 @@ float *LSM9DS0::getMagnetometer()
 }
 #endif
 
-float LSM9DS0::getTemperature()
+float LPS25H::getTemperature()
 {
   // This might be wrong... The datasheet does not provide enough info
   // to calculate the temperature given a specific sensor reading.  So
@@ -654,7 +654,7 @@ float LSM9DS0::getTemperature()
   return (((m_temp / 2048.0) * 8.0) * 100.0);
 }
 
-bool LSM9DS0::enableTemperatureSensor(bool enable)
+bool LPS25H::enableTemperatureSensor(bool enable)
 {
   uint8_t reg = readReg(DEV_XM, REG_CTRL_REG5_XM);
 
@@ -666,90 +666,90 @@ bool LSM9DS0::enableTemperatureSensor(bool enable)
   return writeReg(DEV_XM, REG_CTRL_REG5_XM, reg);
 }
 
-uint8_t LSM9DS0::getGyroscopeStatus()
+uint8_t LPS25H::getGyroscopeStatus()
 {
   return readReg(DEV_GYRO, REG_STATUS_REG_G);
 }
 
-uint8_t LSM9DS0::getMagnetometerStatus()
+uint8_t LPS25H::getMagnetometerStatus()
 {
   return readReg(DEV_XM, REG_STATUS_REG_M);
 }
 
-uint8_t LSM9DS0::getAccelerometerStatus()
+uint8_t LPS25H::getAccelerometerStatus()
 {
   return readReg(DEV_XM, REG_STATUS_REG_A);
 }
 
-uint8_t LSM9DS0::getGyroscopeInterruptConfig()
+uint8_t LPS25H::getGyroscopeInterruptConfig()
 {
   return readReg(DEV_GYRO, REG_INT1_CFG_G);
 }
 
-bool LSM9DS0::setGyroscopeInterruptConfig(uint8_t enables)
+bool LPS25H::setGyroscopeInterruptConfig(uint8_t enables)
 {
   return writeReg(DEV_GYRO, REG_INT1_CFG_G, enables);
 }
 
-uint8_t LSM9DS0::getGyroscopeInterruptSrc()
+uint8_t LPS25H::getGyroscopeInterruptSrc()
 {
   return readReg(DEV_GYRO, REG_INT1_SRC_G);
 }
 
-uint8_t LSM9DS0::getMagnetometerInterruptControl()
+uint8_t LPS25H::getMagnetometerInterruptControl()
 {
   return readReg(DEV_XM, REG_INT_CTRL_REG_M);
 }
 
-bool LSM9DS0::setMagnetometerInterruptControl(uint8_t enables)
+bool LPS25H::setMagnetometerInterruptControl(uint8_t enables)
 {
   return writeReg(DEV_XM, REG_INT_CTRL_REG_M, enables);
 }
 
-uint8_t LSM9DS0::getMagnetometerInterruptSrc()
+uint8_t LPS25H::getMagnetometerInterruptSrc()
 {
   return readReg(DEV_XM, REG_INT_SRC_REG_M);
 }
 
-uint8_t LSM9DS0::getInterruptGen1()
+uint8_t LPS25H::getInterruptGen1()
 {
   return readReg(DEV_XM, REG_INT_GEN_1_REG);
 }
 
-bool LSM9DS0::setInterruptGen1(uint8_t enables)
+bool LPS25H::setInterruptGen1(uint8_t enables)
 {
   return writeReg(DEV_XM, REG_INT_GEN_1_REG, enables);
 }
 
-uint8_t LSM9DS0::getInterruptGen1Src()
+uint8_t LPS25H::getInterruptGen1Src()
 {
   return readReg(DEV_XM, REG_INT_GEN_1_SRC);
 }
 
-uint8_t LSM9DS0::getInterruptGen2()
+uint8_t LPS25H::getInterruptGen2()
 {
   return readReg(DEV_XM, REG_INT_GEN_2_REG);
 }
 
-bool LSM9DS0::setInterruptGen2(uint8_t enables)
+bool LPS25H::setInterruptGen2(uint8_t enables)
 {
   return writeReg(DEV_XM, REG_INT_GEN_2_REG, enables);
 }
 
-uint8_t LSM9DS0::getInterruptGen2Src()
+uint8_t LPS25H::getInterruptGen2Src()
 {
   return readReg(DEV_XM, REG_INT_GEN_2_SRC);
 }
 
 #ifdef SWIGJAVA
-void LSM9DS0::installISR(INTERRUPT_PINS_T intr, int gpio, mraa::Edge level,
+void LPS25H::installISR(INTERRUPT_PINS_T intr, int gpio, mraa::Edge level,
 			 IsrCallback *cb)
 {
         installISR(intr, gpio, level, generic_callback_isr, cb);
 }
 #endif
 
-void LSM9DS0::installISR(INTERRUPT_PINS_T intr, int gpio, mraa::Edge level, 
+void LPS25H::installISR(INTERRUPT_PINS_T intr, int gpio, mraa::Edge level, 
                          void (*isr)(void *), void *arg)
 {
   // delete any existing ISR and GPIO context
@@ -762,7 +762,7 @@ void LSM9DS0::installISR(INTERRUPT_PINS_T intr, int gpio, mraa::Edge level,
   getPin(intr)->isr(level, isr, arg);
 }
 
-void LSM9DS0::uninstallISR(INTERRUPT_PINS_T intr)
+void LPS25H::uninstallISR(INTERRUPT_PINS_T intr)
 {
   if (getPin(intr))
     {
@@ -773,7 +773,7 @@ void LSM9DS0::uninstallISR(INTERRUPT_PINS_T intr)
     }
 }
 
-mraa::Gpio*& LSM9DS0::getPin(INTERRUPT_PINS_T intr)
+mraa::Gpio*& LPS25H::getPin(INTERRUPT_PINS_T intr)
 {
   switch(intr)
     {
