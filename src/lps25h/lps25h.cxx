@@ -1,796 +1,209 @@
 /*
- * Author: Jon Trulson <jtrulson@ics.com>
+ * Author: widret <widret@users.noreply.github.com>
  * Copyright (c) 2015 Intel Corporation.
  *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to deal in the Software without restriction, including
- * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sublicense, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to
- * the following conditions:
+ * This application code supports the lps25h digital barometric pressure
+ * and temperature sensor from STMicroelectronics.  The datasheet is available
+ * from their website:
+ * http://www.st.com/st-web-ui/static/active/en/resource/technical/document/datasheet/DM00066332.pdf
  *
- * The above copyright notice and this permission notice shall be
- * included in all copies or substantial portions of the Software.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
- * LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
- * OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
- * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
  */
 
-#include <unistd.h>
 #include <iostream>
+#include <string>
 #include <stdexcept>
-#include <string.h>
+#include <unistd.h>
+#include <stdlib.h>
 
 #include "lps25h.h"
 
 using namespace upm;
-using namespace std;
 
-
-LPS25H::LPS25H(int bus, uint8_t gAddress, uint8_t xmAddress) :
-  m_i2cG(bus), m_i2cXM(bus), m_gpioG_INT(0), m_gpioG_DRDY(0),
-  m_gpioXM_GEN1(0), m_gpioXM_GEN2(0)
+LPS25H::LPS25H (int bus, int devAddr, uint8_t mode) : m_i2ControlCtx(bus)
 {
-  m_gAddr = gAddress;
-  m_xmAddr = xmAddress;
+    int id;
 
-  m_accelX = 0.0;
-  m_accelY = 0.0;
-  m_accelZ = 0.0;
-  
-  m_gyroX = 0.0;
-  m_gyroY = 0.0;
-  m_gyroZ = 0.0;
-  
-  m_magX = 0.0;
-  m_magY = 0.0;
-  m_magZ = 0.0;
-  
-  m_temp = 0.0;
+    m_name = LPS25H_NAME;
 
-  m_accelScale = 0.0;
-  m_gyroScale = 0.0;
-  m_magScale = 0.0;
+    m_controlAddr = devAddr;
+    m_bus = bus;
 
-  mraa::Result rv;
-  if ( (rv = m_i2cG.address(m_gAddr)) != mraa::SUCCESS)
-    {
-      throw std::runtime_error(string(__FUNCTION__) +
-                               ": Could not initialize Gyro i2c address");
-      return;
+    mraa::Result ret = m_i2ControlCtx.address(m_controlAddr);
+    if (ret != mraa::SUCCESS) {
+        throw std::runtime_error(std::string(__FUNCTION__) +
+                                 ": mraa_i2c_address() failed");
+        return;
     }
 
-  if ( (rv = m_i2cXM.address(m_xmAddr)) != mraa::SUCCESS)
-    {
-      throw std::runtime_error(string(__FUNCTION__) + 
-                               ": Could not initialize XM i2c address");
-      return;
+    //setOversampling(mode);
+    i2cWriteReg(LPS25H_CTRL_REG1,LPS25H_CTRL_OST);
+
+    id = i2cReadReg_8(LPS25H_WHO_AM_I);
+    if (id != LPS25H_DEVICE_ID)  {
+        throw std::runtime_error(std::string(__FUNCTION__) +
+                                 ": incorrect device id");
+        return;
     }
 }
 
-LPS25H::~LPS25H()
+/*
+ * Function to test the device and verify that is appears operational
+ * Typically functioning sensors will return "noisy" values and would
+ * be expected to change a bit.  This fuction will check for this
+ * variation.
+ */
+
+int
+LPS25H::testSensor(void)
 {
-  uninstallISR(INTERRUPT_G_INT);
-  uninstallISR(INTERRUPT_G_DRDY);
-  uninstallISR(INTERRUPT_XM_GEN1);
-  uninstallISR(INTERRUPT_XM_GEN2);
+    int i, iTries;
+    int iError = 0;
+    float pressure, temperature;
+    float fPMin, fPMax, fTMin, fTMax;
+
+    fprintf(stdout, "Executing Sensor Test.\n" );
+
+    pressure    = getPressure(true);
+    temperature = getTemperature(false);
+    fPMin = fPMax = pressure;
+    fTMin = fTMax = temperature;
+
+    iTries = 20;
+    do {
+        pressure = getPressure(true);
+        temperature = getTemperature(false);
+        if (pressure < fPMin)    fPMin = pressure;
+        if (pressure > fPMax)    fPMax = pressure;
+        if (temperature < fTMin) fTMin = temperature;
+        if (temperature > fTMax) fTMax = temperature;
+    }
+    while(fPMin == fPMax && fTMin == fTMax && --iTries);
+
+    if (fPMin == fPMax && fTMin == fTMax) {
+        fprintf(stdout, "  Warning - sensor values not changing.\n" );
+        return -1;
+    }
+
+    fprintf(stdout, "  Test complete.\n");
+
+    return 0;
 }
 
-bool LPS25H::init()
+/*
+ * Function to dump out the i2c register block to the screen
+ */
+
+void
+LPS25H::dumpSensor(void)
 {
-  // Init the gyroscope
+    int i, j, ival;
 
-  // power up
-  if (!setGyroscopePowerDown(false))
-    {
-      throw std::runtime_error(string(__FUNCTION__) + 
-                               ": Unable to wake up gyro");
-      return false;
+    fprintf(stdout, "Dumping i2c block from %s\n", LPS25H_NAME);
+    for (i=0; i < 256; i+=16) {
+        fprintf(stdout, "  %02x: ", i);
+        for (j=i; j < i+16; j++) {
+            fprintf(stdout, "%02x ", i2cReadReg_8(j));
+        }
+        fprintf(stdout, "\n");
     }
-  
-  // enable all axes
-  if (!setGyroscopeEnableAxes(CTRL_REG1_G_YEN |CTRL_REG1_G_XEN |
-                              CTRL_REG1_G_ZEN))
-    {
-      throw std::runtime_error(string(__FUNCTION__) + 
-                               ": Unable to enable gyro axes");
-      return false;
-    }
-  
-  // set gyro ODR
-  if (!setGyroscopeODR(G_ODR_95_25))
-    {
-      throw std::runtime_error(string(__FUNCTION__) + 
-                               ": Unable to set gyro ODR");
-      return false;
-    }
-
-  // set gyro scale
-  if (!setGyroscopeScale(G_FS_245))
-    {
-      throw std::runtime_error(string(__FUNCTION__) + 
-                               ": Unable to set gyro scale");
-      return false;
-    }
-
-  // Init the accelerometer
-
-  // power up and set ODR
-  if (!setAccelerometerODR(XM_AODR_100))
-    {
-      throw std::runtime_error(string(__FUNCTION__) + 
-                               ": Unable to set accel ODR");
-      return false;
-    }
-
-  // enable all axes
-  if (!setAccelerometerEnableAxes(CTRL_REG1_XM_AXEN |CTRL_REG1_XM_AYEN |
-                                  CTRL_REG1_XM_AZEN))
-    {
-      throw std::runtime_error(string(__FUNCTION__) + 
-                               ": Unable to enable accel axes");
-      return false;
-    }
-  
-  // set scaling rate
-  if (!setAccelerometerScale(XM_AFS_2))
-    {
-      throw std::runtime_error(string(__FUNCTION__) + 
-                               ": Unable to set accel scale");
-      return false;
-    }
-  
-  // temperature sensor
-
-  // enable the temperature sensor
-  if (!enableTemperatureSensor(true))
-    {
-      throw std::runtime_error(string(__FUNCTION__) + 
-                               ": Unable to enable temp sensor");
-      return false;
-    }
-
-  // Init the magnetometer
-  
-  // set mode (this also powers it up if not XM_MD_POWERDOWN)
-  if (!setMagnetometerMode(XM_MD_CONTINUOUS))
-    {
-      throw std::runtime_error(string(__FUNCTION__) + 
-                               ": Unable to set mag scale");
-      return false;
-    }
-
-  // turn LPM off
-  if (!setMagnetometerLPM(false))
-    {
-      throw std::runtime_error(string(__FUNCTION__) + 
-                               ": Unable to disable mag LPM");
-      return false;
-    }
-
-  // set resolution
-  if (!setMagnetometerResolution(XM_RES_LOW))
-    {
-      throw std::runtime_error(string(__FUNCTION__) + 
-                               ": Unable to set mag res");
-      return false;
-    }
-  
-  // set ODR
-  if (!setMagnetometerODR(XM_ODR_12_5))
-    {
-      throw std::runtime_error(string(__FUNCTION__) + 
-                               ": Unable to set mag ODR");
-      return false;
-    }
-  
-  // set scale
-  if (!setMagnetometerScale(XM_MFS_2))
-    {
-      throw std::runtime_error(string(__FUNCTION__) + 
-                               ": Unable to set mag scale");
-      return false;
-    }
-
-  return true;
 }
 
-
-void LPS25H::update()
-{
-  updateGyroscope();
-  updateAccelerometer();
-  updateMagnetometer();
-  updateTemperature();
+int32_t
+LPS25H::getPressureReg() {
+   //i2cReadReg_8(LPS25H_PRESS_POUT_XL);
+   //i2cReadReg_8(LPS25H_PRESS_OUT_L);
+   //i2cReadReg_8(LPS25H_PRESS_OUT_H);
+    return ((i2cReadReg_8(LPS25H_PRESS_POUT_XL) << 16)| ((i2cReadReg_8(LPS25H_PRESS_OUT_L) << 8) | ((i2cReadReg_8(LPS25H_PRESS_OUT_H));
 }
 
-void LPS25H::updateGyroscope()
-{
-  uint8_t buffer[6];
-
-  memset(buffer, 0, 6);
-  readRegs(DEV_GYRO, REG_OUT_X_L_G, buffer, 6);
-
-  int16_t x, y, z;
-
-  x =  ( (buffer[1] << 8) | buffer[0] );
-  y =  ( (buffer[3] << 8) | buffer[2] );
-  z =  ( (buffer[5] << 8) | buffer[4] );
-
-  m_gyroX = float(x);
-  m_gyroY = float(y);
-  m_gyroZ = float(z);
+int32_t
+LPS25H::getTempReg() {
+    return ((i2cReadReg_8(LPS25H_TEMP_OUT_L) << 8) | ((i2cReadReg_8(LPS25H_TEMP_OUT_H));
 }
 
-void LPS25H::updateAccelerometer()
-{
-  uint8_t buffer[6];
+float
+LPS25H::getPressure(int bSampleData) {
+    int ret;
 
-  memset(buffer, 0, 6);
-  readRegs(DEV_XM, REG_OUT_X_L_A, buffer, 6);
+    m_iPressure = getPressureReg();
 
-  int16_t x, y, z;
-
-  x =  ( (buffer[1] << 8) | buffer[0] );
-  y =  ( (buffer[3] << 8) | buffer[2] );
-  z =  ( (buffer[5] << 8) | buffer[4] );
-
-  m_accelX = float(x);
-  m_accelY = float(y);
-  m_accelZ = float(z);
+    return (float)m_iPressure / 4096;
 }
 
-void LPS25H::updateMagnetometer()
-{
-  uint8_t buffer[6];
+float
+LPS25H::getTemperature(int bSampleData) {
+    int ret;
 
-  memset(buffer, 0, 6);
-  readRegs(DEV_XM, REG_OUT_X_L_M, buffer, 6);
+    m_iTemperature = getTempReg();
 
-  int16_t x, y, z;
-
-  x =  ( (buffer[1] << 8) | buffer[0] );
-  y =  ( (buffer[3] << 8) | buffer[2] );
-  z =  ( (buffer[5] << 8) | buffer[4] );
-
-  m_magX = float(x);
-  m_magY = float(y);
-  m_magZ = float(z);
+    return (float)m_iTemperature / 1000;
 }
 
-void LPS25H::updateTemperature()
-{
-  uint8_t buffer[2];
-
-  memset(buffer, 0, 2);
-  readRegs(DEV_XM, REG_OUT_TEMP_L_XM, buffer, 2);
-
-  //  cerr << "HIGH: " << int(buffer[1]) << " LOW: " << int(buffer[0]) << endl;
-
-  // 12b signed
-  int16_t temp = ( (buffer[1] << 8) | (buffer[0] ) );
-  if (temp & 0x0800)
-    {
-      temp &= ~0x0800;
-      temp *= -1;
-    }
-
-  m_temp = float(temp);
+float
+LPS25H::getSealevelPressure(float altitudeMeters) {
+    float fPressure = (float)m_iPressure / 100.0;
+    return fPressure / pow(1.0-altitudeMeters/44330, 5.255);
 }
 
-uint8_t LPS25H::readReg(DEVICE_T dev, uint8_t reg)
-{
-  mraa::I2c *device;
-
-  switch(dev)
-    {
-    case DEV_GYRO: device = &m_i2cG; break;
-    case DEV_XM:   device = &m_i2cXM; break;
-    default:
-      throw std::logic_error(string(__FUNCTION__) + 
-                             ": Internal error, invalid device specified");
-      return 0;
-    }
-
-  return device->readReg(reg);
+float
+LPS25H::getAltitude (float sealevelPressure) {
+    float fPressure = (float)m_iPressure / 100.0;
+    return 44330 * (1.0 - pow(fPressure /sealevelPressure,0.1903));
 }
 
-void LPS25H::readRegs(DEVICE_T dev, uint8_t reg, uint8_t *buffer, int len)
+float
+LPS25H::convertTempCtoF(float fTemp)
 {
-  mraa::I2c *device;
-
-  switch(dev)
-    {
-    case DEV_GYRO: device = &m_i2cG; break;
-    case DEV_XM:   device = &m_i2cXM; break;
-    default:
-      throw std::logic_error(string(__FUNCTION__) + 
-                             ": Internal error, invalid device specified");
-      return;
-    }
-
-  // We need to set the high bit of the register to enable
-  // auto-increment mode for reading multiple registers in one go.
-  device->readBytesReg(reg | m_autoIncrementMode, buffer, len);
+    return(fTemp * 9 / 5 + 32);
 }
 
-bool LPS25H::writeReg(DEVICE_T dev, uint8_t reg, uint8_t val)
+/*
+ * This is set for 15degC (Pa = 0.0002961 in Hg)
+ */
+float
+LPS25H::convertPaToinHg(float fPressure)
 {
-  mraa::I2c *device;
+    return(fPressure * 0.0002961);
+}
 
-  switch(dev)
-    {
-    case DEV_GYRO: device = &m_i2cG; break;
-    case DEV_XM:   device = &m_i2cXM; break;
-    default:
-      throw std::logic_error(string(__FUNCTION__) + 
-                             ": Internal error, invalid device specified");
-      return false;
-    }
+/*
+ * Functions to read and write data to the i2c device
+ */
 
-  mraa::Result rv;
-  if ((rv = device->writeReg(reg, val)) != mraa::SUCCESS)
-    {
+mraa::Result
+LPS25H::i2cWriteReg (uint8_t reg, uint8_t value) {
+    mraa::Result error = mraa::SUCCESS;
+
+    uint8_t data[2] = { reg, value };
+    m_i2ControlCtx.address (m_controlAddr);
+    error = m_i2ControlCtx.write (data, 2);
+
+    if (error != mraa::SUCCESS)
       throw std::runtime_error(std::string(__FUNCTION__) +
-                               ": I2c.writeReg() failed");
-      return false;
-    } 
-  
-  return true;
+                               ":mraa_i2c_write() failed");
+    return error;
 }
 
-bool LPS25H::setGyroscopePowerDown(bool enable)
-{
-  uint8_t reg = readReg(DEV_GYRO, REG_CTRL_REG1_G);
-
-  if (enable)
-    reg &= ~CTRL_REG1_G_PD;
-  else
-    reg |= CTRL_REG1_G_PD;
-
-  return writeReg(DEV_GYRO, REG_CTRL_REG1_G, reg);
+uint8_t
+LPS25H::i2cReadReg_8 (int reg) {
+    m_i2ControlCtx.address(m_controlAddr);
+    return m_i2ControlCtx.readReg(reg);
 }
 
-bool LPS25H::setGyroscopeEnableAxes(uint8_t axes)
-{
-  uint8_t reg = readReg(DEV_GYRO, REG_CTRL_REG1_G);
-
-  // filter out any non-axis related data from arg
-  axes &= (CTRL_REG1_G_YEN | CTRL_REG1_G_XEN |  CTRL_REG1_G_ZEN);
-
-  // clear them in the register
-  reg &= ~(CTRL_REG1_G_YEN | CTRL_REG1_G_XEN |  CTRL_REG1_G_ZEN);
-
-  // now add them
-  reg |= axes;
-
-  return writeReg(DEV_GYRO, REG_CTRL_REG1_G, reg);
-}
-
-bool LPS25H::setGyroscopeODR(G_ODR_T odr)
-{
-  uint8_t reg = readReg(DEV_GYRO, REG_CTRL_REG1_G);
-
-  reg &= ~(_CTRL_REG1_G_ODR_MASK << _CTRL_REG1_G_ODR_SHIFT);
-
-  reg |= (odr << _CTRL_REG1_G_ODR_SHIFT);
-  
-  return writeReg(DEV_GYRO, REG_CTRL_REG1_G, reg);
-}
-
-bool LPS25H::setGyroscopeScale(G_FS_T scale)
-{
-  uint8_t reg = readReg(DEV_GYRO, REG_CTRL_REG4_G);
-
-  reg &= ~(_CTRL_REG4_G_FS_MASK << _CTRL_REG4_G_FS_SHIFT);
-
-  reg |= (scale << _CTRL_REG4_G_FS_SHIFT);
-
-  if (!writeReg(DEV_GYRO, REG_CTRL_REG4_G, reg))
-    {
-      return false;
-    }
-
-  // store scaling factor (mDeg/s/LSB)
-
-  switch (scale)
-    {
-    case G_FS_245:
-      m_gyroScale = 8.75;
-      break;
-
-    case G_FS_500:
-      m_gyroScale = 17.5;
-      break;
-
-    case G_FS_2000:
-      m_gyroScale = 70.0;
-      break;
-
-    default: // should never occur, but...
-      m_gyroScale = 0.0;        // set a safe, though incorrect value
-      throw std::logic_error(string(__FUNCTION__) + 
-                             ": internal error, unsupported scale");
-      break;
-    }
-
-  return true;
-}
-
-bool LPS25H::setAccelerometerEnableAxes(uint8_t axes)
-{
-  uint8_t reg = readReg(DEV_XM, REG_CTRL_REG1_XM);
-
-  // filter out any non-axis related data from arg
-  axes &= (CTRL_REG1_XM_AXEN | CTRL_REG1_XM_AYEN | CTRL_REG1_XM_AZEN);
-
-  // clear them in the register
-  reg &= ~(CTRL_REG1_XM_AXEN | CTRL_REG1_XM_AYEN | CTRL_REG1_XM_AZEN);
-
-  // now add them
-  reg |= axes;
-
-  return writeReg(DEV_XM, REG_CTRL_REG1_XM, reg);
-}
-
-bool LPS25H::setAccelerometerODR(XM_AODR_T odr)
-{
-  uint8_t reg = readReg(DEV_XM, REG_CTRL_REG1_XM);
-
-  reg &= ~(_CTRL_REG1_XM_AODR_MASK << _CTRL_REG1_XM_AODR_SHIFT);
-
-  reg |= (odr << _CTRL_REG1_XM_AODR_SHIFT);
-  
-  return writeReg(DEV_XM, REG_CTRL_REG1_XM, reg);
-}
-
-bool LPS25H::setAccelerometerScale(XM_AFS_T scale)
-{
-  uint8_t reg = readReg(DEV_XM, REG_CTRL_REG2_XM);
-
-  reg &= ~(_CTRL_REG2_XM_AFS_MASK << _CTRL_REG2_XM_AFS_SHIFT);
-
-  reg |= (scale << _CTRL_REG2_XM_AFS_SHIFT);
-
-  if (!writeReg(DEV_XM, REG_CTRL_REG2_XM, reg))
-    {
-      return false;
-    }
-
-  // store scaling factor
-  
-  switch (scale)
-    {
-    case XM_AFS_2:
-      m_accelScale = 0.061; 
-      break;
-
-    case XM_AFS_4:
-      m_accelScale = 0.122 ;
-      break;
-
-    case XM_AFS_6:
-      m_accelScale = 0.183 ;
-      break;
-
-    case XM_AFS_8:
-      m_accelScale = 0.244 ;
-      break;
-
-    case XM_AFS_16:
-      m_accelScale = 0.732 ;
-      break;
-
-    default: // should never occur, but...
-      m_accelScale = 0.0;        // set a safe, though incorrect value
-      throw std::logic_error(string(__FUNCTION__) + 
-                             ": internal error, unsupported scale");
-      break;
-    }
-
-  return true;
-}
-
-bool LPS25H::setMagnetometerResolution(XM_RES_T res)
-{
-  uint8_t reg = readReg(DEV_XM, REG_CTRL_REG5_XM);
-
-  reg &= ~(_CTRL_REG5_XM_RES_MASK << _CTRL_REG5_XM_RES_SHIFT);
-
-  reg |= (res << _CTRL_REG5_XM_RES_SHIFT);
-  
-  return writeReg(DEV_XM, REG_CTRL_REG5_XM, reg);
-}
-
-bool LPS25H::setMagnetometerODR(XM_ODR_T odr)
-{
-  uint8_t reg = readReg(DEV_XM, REG_CTRL_REG5_XM);
-
-  reg &= ~(_CTRL_REG5_XM_ODR_MASK << _CTRL_REG5_XM_ODR_SHIFT);
-
-  reg |= (odr << _CTRL_REG5_XM_ODR_SHIFT);
-  
-  return writeReg(DEV_XM, REG_CTRL_REG5_XM, reg);
-}
-
-bool LPS25H::setMagnetometerMode(XM_MD_T mode)
-{
-  uint8_t reg = readReg(DEV_XM, REG_CTRL_REG7_XM);
-
-  reg &= ~(_CTRL_REG7_XM_MD_MASK << _CTRL_REG7_XM_MD_SHIFT);
-
-  reg |= (mode << _CTRL_REG7_XM_MD_SHIFT);
-  
-  return writeReg(DEV_XM, REG_CTRL_REG7_XM, reg);
-}
-
-bool LPS25H::setMagnetometerLPM(bool enable)
-{
-  uint8_t reg = readReg(DEV_XM, REG_CTRL_REG7_XM);
-
-  if (enable)
-    reg |= CTRL_REG7_XM_MLP;
-  else
-    reg &= ~CTRL_REG7_XM_MLP;
-  
-  return writeReg(DEV_XM, REG_CTRL_REG7_XM, reg);
-}
-
-bool LPS25H::setMagnetometerScale(XM_MFS_T scale)
-{
-  uint8_t reg = readReg(DEV_XM, REG_CTRL_REG6_XM);
-
-  reg &= ~(_CTRL_REG6_XM_MFS_MASK << _CTRL_REG6_XM_MFS_SHIFT);
-
-  reg |= (scale << _CTRL_REG6_XM_MFS_SHIFT);
-
-  if (!writeReg(DEV_XM, REG_CTRL_REG6_XM, reg))
-    {
-      return false;
-    }
-
-  // store scaling factor
-  
-  switch (scale)
-    {
-    case XM_MFS_2:
-      m_magScale = 0.08;
-      break;
-
-    case XM_MFS_4:
-      m_magScale = 0.16;
-      break;
-
-    case XM_MFS_8:
-      m_magScale = 0.32;
-      break;
-
-    case XM_MFS_12:
-      m_magScale = 0.48;
-      break;
-
-    default: // should never occur, but...
-      m_magScale = 0.0;        // set a safe, though incorrect value
-      throw std::logic_error(string(__FUNCTION__) + 
-                             ": internal error, unsupported scale");
-      break;
-    }
-
-  return true;
-}
-
-void LPS25H::getAccelerometer(float *x, float *y, float *z)
-{
-  if (x)
-    *x = (m_accelX * m_accelScale) / 1000.0;
-
-  if (y)
-    *y = (m_accelY * m_accelScale) / 1000.0;
-
-  if (z)
-    *z = (m_accelZ * m_accelScale) / 1000.0;
-}
-
-void LPS25H::getGyroscope(float *x, float *y, float *z)
-{
-  if (x)
-    *x = (m_gyroX * m_gyroScale) / 1000.0;
-
-  if (y)
-    *y = (m_gyroY * m_gyroScale) / 1000.0;
-
-  if (z)
-    *z = (m_gyroZ * m_gyroScale) / 1000.0;
-}
-
-void LPS25H::getMagnetometer(float *x, float *y, float *z)
-{
-  if (x)
-    *x = (m_magX * m_magScale) / 1000.0;
-
-  if (y)
-    *y = (m_magY * m_magScale) / 1000.0;
-
-  if (z)
-    *z = (m_magZ * m_magScale) / 1000.0;
-}
-
-#ifdef JAVACALLBACK
-float *LPS25H::getAccelerometer()
-{
-  float *v = new float[3];
-  getAccelerometer(&v[0], &v[1], &v[2]);
-  return v;
-}
-
-float *LPS25H::getGyroscope()
-{
-  float *v = new float[3];
-  getGyroscope(&v[0], &v[1], &v[2]);
-  return v;
-}
-
-float *LPS25H::getMagnetometer()
-{
-  float *v = new float[3];
-  getMagnetometer(&v[0], &v[1], &v[2]);
-  return v;
-}
-#endif
-
-float LPS25H::getTemperature()
-{
-  // This might be wrong... The datasheet does not provide enough info
-  // to calculate the temperature given a specific sensor reading.  So
-  // - with 12b resolution, signed, and 8 degrees/per LSB, we come up
-  // with the following.  Then scale up and we get a number that seems
-  // pretty close.
-  return (((m_temp / 2048.0) * 8.0) * 100.0);
-}
-
-bool LPS25H::enableTemperatureSensor(bool enable)
-{
-  uint8_t reg = readReg(DEV_XM, REG_CTRL_REG5_XM);
-
-  if (enable)
-    reg |= CTRL_REG5_XM_TEMP_EN;
-  else
-    reg &= ~CTRL_REG5_XM_TEMP_EN;
-
-  return writeReg(DEV_XM, REG_CTRL_REG5_XM, reg);
-}
-
-uint8_t LPS25H::getGyroscopeStatus()
-{
-  return readReg(DEV_GYRO, REG_STATUS_REG_G);
-}
-
-uint8_t LPS25H::getMagnetometerStatus()
-{
-  return readReg(DEV_XM, REG_STATUS_REG_M);
-}
-
-uint8_t LPS25H::getAccelerometerStatus()
-{
-  return readReg(DEV_XM, REG_STATUS_REG_A);
-}
-
-uint8_t LPS25H::getGyroscopeInterruptConfig()
-{
-  return readReg(DEV_GYRO, REG_INT1_CFG_G);
-}
-
-bool LPS25H::setGyroscopeInterruptConfig(uint8_t enables)
-{
-  return writeReg(DEV_GYRO, REG_INT1_CFG_G, enables);
-}
-
-uint8_t LPS25H::getGyroscopeInterruptSrc()
-{
-  return readReg(DEV_GYRO, REG_INT1_SRC_G);
-}
-
-uint8_t LPS25H::getMagnetometerInterruptControl()
-{
-  return readReg(DEV_XM, REG_INT_CTRL_REG_M);
-}
-
-bool LPS25H::setMagnetometerInterruptControl(uint8_t enables)
-{
-  return writeReg(DEV_XM, REG_INT_CTRL_REG_M, enables);
-}
-
-uint8_t LPS25H::getMagnetometerInterruptSrc()
-{
-  return readReg(DEV_XM, REG_INT_SRC_REG_M);
-}
-
-uint8_t LPS25H::getInterruptGen1()
-{
-  return readReg(DEV_XM, REG_INT_GEN_1_REG);
-}
-
-bool LPS25H::setInterruptGen1(uint8_t enables)
-{
-  return writeReg(DEV_XM, REG_INT_GEN_1_REG, enables);
-}
-
-uint8_t LPS25H::getInterruptGen1Src()
-{
-  return readReg(DEV_XM, REG_INT_GEN_1_SRC);
-}
-
-uint8_t LPS25H::getInterruptGen2()
-{
-  return readReg(DEV_XM, REG_INT_GEN_2_REG);
-}
-
-bool LPS25H::setInterruptGen2(uint8_t enables)
-{
-  return writeReg(DEV_XM, REG_INT_GEN_2_REG, enables);
-}
-
-uint8_t LPS25H::getInterruptGen2Src()
-{
-  return readReg(DEV_XM, REG_INT_GEN_2_SRC);
-}
-
-#ifdef SWIGJAVA
-void LPS25H::installISR(INTERRUPT_PINS_T intr, int gpio, mraa::Edge level,
-			 IsrCallback *cb)
-{
-        installISR(intr, gpio, level, generic_callback_isr, cb);
-}
-#endif
-
-void LPS25H::installISR(INTERRUPT_PINS_T intr, int gpio, mraa::Edge level, 
-                         void (*isr)(void *), void *arg)
-{
-  // delete any existing ISR and GPIO context
-  uninstallISR(intr);
-
-  // greate gpio context
-  getPin(intr) = new mraa::Gpio(gpio);
-
-  getPin(intr)->dir(mraa::DIR_IN);
-  getPin(intr)->isr(level, isr, arg);
-}
-
-void LPS25H::uninstallISR(INTERRUPT_PINS_T intr)
-{
-  if (getPin(intr))
-    {
-      getPin(intr)->isrExit();
-      delete getPin(intr);
-      
-      getPin(intr) = 0;
-    }
-}
-
-mraa::Gpio*& LPS25H::getPin(INTERRUPT_PINS_T intr)
-{
-  switch(intr)
-    {
-    case INTERRUPT_G_INT:
-      return m_gpioG_INT;
-      break;
-    case INTERRUPT_G_DRDY:
-      return m_gpioG_DRDY;
-      break;
-    case INTERRUPT_XM_GEN1:
-      return m_gpioXM_GEN1;
-      break;
-    case INTERRUPT_XM_GEN2:
-      return m_gpioXM_GEN2;
-      break;
-    default:
-      throw std::out_of_range(string(__FUNCTION__) +
-                              ": Invalid interrupt enum passed");
-    }
-}
