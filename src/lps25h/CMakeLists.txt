@@ -1,5 +1,5 @@
 set (libname "lps25h")
-set (libdescription "pressure sensor based on lps25h")
+set (libdescription "lps25h Pressure/Temperature Sensor")
 set (module_src ${libname}.cxx)
 set (module_h ${libname}.h)
 upm_module_init()

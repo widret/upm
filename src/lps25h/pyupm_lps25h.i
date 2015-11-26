@@ -1,15 +1,13 @@
 %module pyupm_lps25h
 %include "../upm.i"
-%include "cpointer.i"
-
-%include "stdint.i"
 
 %feature("autodoc", "3");
 
-%pointer_functions(float, floatp);
+#ifdef DOXYGEN
+%include "lps25h_doc.i"
+#endif
 
 %include "lps25h.h"
 %{
     #include "lps25h.h"
 %}
-
